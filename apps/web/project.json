@@ -1,10 +1,10 @@
 {
   "name": "skein-js-angular",
-  "$schema": "node_modules/nx/schemas/project-schema.json",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "includedScripts": [],
   "projectType": "application",
   "prefix": "app",
-  "sourceRoot": "./src",
+  "sourceRoot": "apps/web/src",
   "tags": [],
   "targets": {
     "extract-i18n": {
@@ -15,8 +15,9 @@
     },
     "lint": {
       "executor": "@nx/eslint:lint",
+      "inputs": ["default", "{workspaceRoot}/eslint.config.mjs"],
       "options": {
-        "lintFilePatterns": ["./src"]
+        "lintFilePatterns": ["apps/web/src"]
       }
     },
     "serve-static": {
@@ -25,6 +26,14 @@
       "options": {
         "buildTarget": "skein-js-angular:build",
         "spa": true
+      }
+    },
+    "dev": {
+      "executor": "nx:run-commands",
+      "continuous": true,
+      "cache": false,
+      "options": {
+        "command": "pnpm exec nx serve skein-js-angular"
       }
     }
   }

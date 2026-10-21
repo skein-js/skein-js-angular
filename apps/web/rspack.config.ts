@@ -6,7 +6,7 @@ export default createConfig(
       root: __dirname,
 
       outputPath: {
-        base: 'dist/skein-js-angular',
+        base: '../../dist/skein-js-angular',
       },
       index: './src/index.html',
       browser: './src/main.ts',

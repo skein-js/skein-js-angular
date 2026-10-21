@@ -8,7 +8,7 @@
       "!{projectRoot}/.eslintrc.json",
       "!{projectRoot}/eslint.config.mjs"
     ],
-    "sharedGlobals": []
+    "sharedGlobals": ["{workspaceRoot}/tsconfig.base.json"]
   },
   "plugins": [
     {
@@ -48,6 +48,9 @@
       "linter": "eslint",
       "style": "scss",
       "unitTestRunner": "none"
+    },
+    "@nx/angular:component": {
+      "style": "scss"
     }
   },
   "defaultProject": "skein-js-angular"
