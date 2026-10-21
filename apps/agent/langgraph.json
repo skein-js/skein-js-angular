@@ -1,0 +1,7 @@
+{
+  "node_version": "24",
+  "graphs": {
+    "chat": "./src/agent-graph.ts:graph"
+  },
+  "env": ".env"
+}

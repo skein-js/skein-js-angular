@@ -1,0 +1,11 @@
+node_modules/
+.skein/
+coverage/
+.nx/
+.yarn/
+.pnp.*
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
+bun.lock
+bun.lockb

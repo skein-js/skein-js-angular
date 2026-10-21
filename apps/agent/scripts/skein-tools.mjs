@@ -1,0 +1,51 @@
+import { spawnSync } from 'node:child_process';
+import { createRequire } from 'node:module';
+import path from 'node:path';
+
+const projectRoot = path.resolve(import.meta.dirname, '..');
+const inherited = {
+  root: '../..',
+  rootEslint: true,
+  rootPrettier: true,
+  eslintConfig: '../../eslint.config.mjs',
+  prettierConfig: '../../.prettierrc',
+  prettierIgnore: '../../.prettierignore',
+};
+const projectRequire = createRequire(path.join(projectRoot, 'package.json'));
+const rootRequire = createRequire(path.resolve(projectRoot, inherited.root, 'package.json'));
+const command = process.argv[2];
+if (!['lint', 'format', 'check'].includes(command)) throw new Error('Unknown tooling command');
+const tool = command === 'lint' ? 'eslint' : 'prettier';
+const owner = inherited[tool === 'eslint' ? 'rootEslint' : 'rootPrettier']
+  ? rootRequire
+  : projectRequire;
+const manifestPath = owner.resolve(tool + '/package.json');
+const manifest = owner(tool + '/package.json');
+const entry = typeof manifest.bin === 'string' ? manifest.bin : manifest.bin[tool];
+// ESLint resolves an explicit config's files/ignores globs against cwd, so an inherited root config
+// runs from the workspace root with this project's src as the target.
+const workspaceRoot = path.resolve(projectRoot, inherited.root);
+const lintFromRoot = command === 'lint' && Boolean(inherited.eslintConfig);
+const args =
+  command === 'lint'
+    ? [
+        lintFromRoot ? path.relative(workspaceRoot, path.join(projectRoot, 'src')) : 'src',
+        '--max-warnings=0',
+      ]
+    : [command === 'format' ? '--write' : '--check', '.'];
+if (lintFromRoot) args.push('--config', path.resolve(projectRoot, inherited.eslintConfig));
+if (command !== 'lint') {
+  args.push('--ignore-path', '.prettierignore');
+  if (inherited.prettierIgnore)
+    args.push('--ignore-path', path.resolve(projectRoot, inherited.prettierIgnore));
+}
+const result = spawnSync(
+  process.execPath,
+  [path.resolve(path.dirname(manifestPath), entry), ...args],
+  {
+    cwd: lintFromRoot ? workspaceRoot : projectRoot,
+    stdio: 'inherit',
+  },
+);
+if (result.error) throw result.error;
+process.exitCode = result.status ?? 1;

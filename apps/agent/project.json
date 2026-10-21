@@ -1,0 +1,202 @@
+{
+  "name": "apps-agent",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "apps/agent/src",
+  "projectType": "application",
+  "targets": {
+    "dev": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "skein dev --port 2024 --no-persist",
+        "cwd": "apps/agent"
+      },
+      "cache": false,
+      "inputs": [
+        "^default",
+        "{projectRoot}/**/*",
+        "!{projectRoot}/.skein/**/*",
+        "!{projectRoot}/**/*.{sqlite,sqlite3,db}",
+        "!{projectRoot}/**/*.{sqlite,sqlite3,db}-{wal,shm}",
+        "{workspaceRoot}/eslint.config.*",
+        "{workspaceRoot}/.prettier*",
+        "{workspaceRoot}/prettier.config.*",
+        "{workspaceRoot}/*lock*",
+        "{workspaceRoot}/pnpm-workspace.yaml",
+        {
+          "runtime": "node --version"
+        },
+        "!{projectRoot}/node_modules/**/*",
+        "!{projectRoot}/coverage/**/*",
+        "{workspaceRoot}/package.json",
+        "{workspaceRoot}/tsconfig.base.json"
+      ],
+      "continuous": true
+    },
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "skein build --artifact-only",
+        "cwd": "apps/agent"
+      },
+      "cache": true,
+      "inputs": [
+        "^default",
+        "{projectRoot}/**/*",
+        "!{projectRoot}/.skein/**/*",
+        "!{projectRoot}/**/*.{sqlite,sqlite3,db}",
+        "!{projectRoot}/**/*.{sqlite,sqlite3,db}-{wal,shm}",
+        "{workspaceRoot}/eslint.config.*",
+        "{workspaceRoot}/.prettier*",
+        "{workspaceRoot}/prettier.config.*",
+        "{workspaceRoot}/*lock*",
+        "{workspaceRoot}/pnpm-workspace.yaml",
+        {
+          "runtime": "node --version"
+        },
+        "!{projectRoot}/node_modules/**/*",
+        "!{projectRoot}/coverage/**/*",
+        "{workspaceRoot}/package.json",
+        "{workspaceRoot}/tsconfig.base.json"
+      ],
+      "outputs": ["{projectRoot}/.skein/build"],
+      "dependsOn": ["^build"]
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tsc --noEmit",
+        "cwd": "apps/agent"
+      },
+      "cache": true,
+      "inputs": [
+        "^default",
+        "{projectRoot}/**/*",
+        "!{projectRoot}/.skein/**/*",
+        "!{projectRoot}/**/*.{sqlite,sqlite3,db}",
+        "!{projectRoot}/**/*.{sqlite,sqlite3,db}-{wal,shm}",
+        "{workspaceRoot}/eslint.config.*",
+        "{workspaceRoot}/.prettier*",
+        "{workspaceRoot}/prettier.config.*",
+        "{workspaceRoot}/*lock*",
+        "{workspaceRoot}/pnpm-workspace.yaml",
+        {
+          "runtime": "node --version"
+        },
+        "!{projectRoot}/node_modules/**/*",
+        "!{projectRoot}/coverage/**/*",
+        "{workspaceRoot}/package.json",
+        "{workspaceRoot}/tsconfig.base.json"
+      ],
+      "dependsOn": ["^build"]
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "vitest run",
+        "cwd": "apps/agent"
+      },
+      "cache": true,
+      "inputs": [
+        "^default",
+        "{projectRoot}/**/*",
+        "!{projectRoot}/.skein/**/*",
+        "!{projectRoot}/**/*.{sqlite,sqlite3,db}",
+        "!{projectRoot}/**/*.{sqlite,sqlite3,db}-{wal,shm}",
+        "{workspaceRoot}/eslint.config.*",
+        "{workspaceRoot}/.prettier*",
+        "{workspaceRoot}/prettier.config.*",
+        "{workspaceRoot}/*lock*",
+        "{workspaceRoot}/pnpm-workspace.yaml",
+        {
+          "runtime": "node --version"
+        },
+        "!{projectRoot}/node_modules/**/*",
+        "!{projectRoot}/coverage/**/*",
+        "{workspaceRoot}/package.json",
+        "{workspaceRoot}/tsconfig.base.json"
+      ],
+      "dependsOn": ["^build"]
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node scripts/skein-tools.mjs lint",
+        "cwd": "apps/agent"
+      },
+      "cache": true,
+      "inputs": [
+        "^default",
+        "{projectRoot}/**/*",
+        "!{projectRoot}/.skein/**/*",
+        "!{projectRoot}/**/*.{sqlite,sqlite3,db}",
+        "!{projectRoot}/**/*.{sqlite,sqlite3,db}-{wal,shm}",
+        "{workspaceRoot}/eslint.config.*",
+        "{workspaceRoot}/.prettier*",
+        "{workspaceRoot}/prettier.config.*",
+        "{workspaceRoot}/*lock*",
+        "{workspaceRoot}/pnpm-workspace.yaml",
+        {
+          "runtime": "node --version"
+        },
+        "!{projectRoot}/node_modules/**/*",
+        "!{projectRoot}/coverage/**/*",
+        "{workspaceRoot}/package.json",
+        "{workspaceRoot}/tsconfig.base.json"
+      ]
+    },
+    "format": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node scripts/skein-tools.mjs format",
+        "cwd": "apps/agent"
+      },
+      "cache": false,
+      "inputs": [
+        "^default",
+        "{projectRoot}/**/*",
+        "!{projectRoot}/.skein/**/*",
+        "!{projectRoot}/**/*.{sqlite,sqlite3,db}",
+        "!{projectRoot}/**/*.{sqlite,sqlite3,db}-{wal,shm}",
+        "{workspaceRoot}/eslint.config.*",
+        "{workspaceRoot}/.prettier*",
+        "{workspaceRoot}/prettier.config.*",
+        "{workspaceRoot}/*lock*",
+        "{workspaceRoot}/pnpm-workspace.yaml",
+        {
+          "runtime": "node --version"
+        },
+        "!{projectRoot}/node_modules/**/*",
+        "!{projectRoot}/coverage/**/*",
+        "{workspaceRoot}/package.json",
+        "{workspaceRoot}/tsconfig.base.json"
+      ]
+    },
+    "format:check": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node scripts/skein-tools.mjs check",
+        "cwd": "apps/agent"
+      },
+      "cache": true,
+      "inputs": [
+        "^default",
+        "{projectRoot}/**/*",
+        "!{projectRoot}/.skein/**/*",
+        "!{projectRoot}/**/*.{sqlite,sqlite3,db}",
+        "!{projectRoot}/**/*.{sqlite,sqlite3,db}-{wal,shm}",
+        "{workspaceRoot}/eslint.config.*",
+        "{workspaceRoot}/.prettier*",
+        "{workspaceRoot}/prettier.config.*",
+        "{workspaceRoot}/*lock*",
+        "{workspaceRoot}/pnpm-workspace.yaml",
+        {
+          "runtime": "node --version"
+        },
+        "!{projectRoot}/node_modules/**/*",
+        "!{projectRoot}/coverage/**/*",
+        "{workspaceRoot}/package.json",
+        "{workspaceRoot}/tsconfig.base.json"
+      ]
+    }
+  }
+}

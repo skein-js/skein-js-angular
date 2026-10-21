@@ -2,9 +2,14 @@
   "name": "@skein-js-angular/source",
   "version": "0.0.0",
   "license": "MIT",
+  "packageManager": "pnpm@9.15.0",
   "scripts": {
-    "start": "nx serve",
-    "test": "nx test"
+    "dev": "nx run-many -t dev --projects=skein-js-angular,apps-agent --parallel=2",
+    "start": "pnpm dev",
+    "build": "nx run-many -t build --projects=skein-js-angular,apps-agent",
+    "test": "nx test apps-agent",
+    "typecheck": "tsc --noEmit -p apps/web/tsconfig.app.json && nx typecheck apps-agent",
+    "lint": "nx run-many -t lint --projects=skein-js-angular,apps-agent"
   },
   "private": true,
   "dependencies": {
@@ -13,7 +18,8 @@
     "@angular/core": "~22.1.0",
     "@angular/forms": "~22.1.0",
     "@angular/platform-browser": "~22.1.0",
-    "@angular/router": "~22.1.0",
+    "@langchain/angular": "0.4.8",
+    "@langchain/core": "^1.2.9",
     "rxjs": "~7.8.0"
   },
   "devDependencies": {
@@ -25,6 +31,7 @@
     "@angular/compiler-cli": "~22.1.0",
     "@angular/language-service": "~22.1.0",
     "@eslint/js": "^9.8.0",
+    "@langchain/langgraph-sdk": "1.8.11",
     "@nx/angular": "23.3.0",
     "@nx/angular-rspack": "23.3.0",
     "@nx/eslint": "23.3.0",
@@ -37,6 +44,7 @@
     "@rspack/core": "2.0.4",
     "@rspack/dev-server": "^2.0.1",
     "@schematics/angular": "~22.1.0",
+    "@skein-js/nx": "^0.21.0",
     "@swc/helpers": "~0.5.18",
     "@typescript-eslint/utils": "^8.58.0",
     "angular-eslint": "^22.1.0",
@@ -48,6 +56,7 @@
     "tslib": "^2.3.0",
     "typescript": "~6.0.3",
     "typescript-eslint": "^8.58.0",
+    "vitest": "^4.1.9",
     "webpack-merge": "^5.8.0"
   },
   "nx": {
