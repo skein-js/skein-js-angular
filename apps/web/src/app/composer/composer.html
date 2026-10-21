@@ -1,0 +1,16 @@
+<form (submit)="send($event)">
+  <label class="sr-only" for="message">Your message</label>
+  <textarea
+    id="message"
+    [formField]="composer.message"
+    rows="2"
+    placeholder="Ask anything…"
+    (keydown)="onKeydown($event)"
+  ></textarea>
+  @if (busy()) {
+    <button type="button" (click)="stopped.emit()">Stop</button>
+  } @else {
+    <button type="submit" [disabled]="!draft().message.trim()">Send ↑</button>
+  }
+</form>
+<p class="hint">Enter to send · Shift + Enter for a new line</p>

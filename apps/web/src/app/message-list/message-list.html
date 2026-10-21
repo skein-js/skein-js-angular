@@ -1,0 +1,27 @@
+<div
+  class="messages"
+  role="log"
+  aria-label="Conversation"
+  aria-live="polite"
+  [attr.aria-busy]="busy()"
+>
+  @for (message of renderedMessages(); track message.id ?? $index) {
+    @if (message.type === 'tool') {
+      <details class="tool-result">
+        <summary>↳ {{ message.name || 'Tool result' }}</summary>
+        <p>{{ message.text }}</p>
+      </details>
+    } @else if (message.type === 'human' || message.type === 'ai') {
+      <article class="message" [class.user-message]="message.type === 'human'">
+        <span class="author">{{
+          message.type === 'human' ? 'You' : 'Skein'
+        }}</span>
+        <p>{{ message.text }}</p>
+      </article>
+    }
+  }
+  @if (busy()) {
+    <p class="working" role="status">Working…</p>
+  }
+  <div #end></div>
+</div>

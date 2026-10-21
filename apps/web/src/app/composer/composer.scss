@@ -1,0 +1,40 @@
+form {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  padding: 13px;
+  background: #fff;
+  border: 1px solid #dfe3d7;
+  border-radius: 12px;
+  box-shadow: 0 3px 12px #283b1b05;
+}
+textarea {
+  flex: 1;
+  width: 0;
+  min-width: 0;
+  min-height: 50px;
+  max-height: 180px;
+  border: 0;
+  resize: vertical;
+  color: #293223;
+  background: transparent;
+  padding: 4px;
+  font-size: 15px;
+}
+textarea::placeholder {
+  color: #939b89;
+}
+button {
+  flex-shrink: 0;
+  border: 0;
+  background: #496142;
+  color: #fff;
+  border-radius: 7px;
+  padding: 8px 13px;
+  font-size: 13px;
+}
+.hint {
+  margin: 6px 0 0;
+  color: #8a9280;
+  font-size: 10px;
+}

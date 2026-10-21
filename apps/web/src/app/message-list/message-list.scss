@@ -1,0 +1,50 @@
+.messages {
+  max-width: 650px;
+  margin: 0 auto;
+}
+.message {
+  margin: 0 0 28px;
+}
+.author {
+  display: block;
+  color: #496142;
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.message p {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.user-message {
+  margin-left: auto;
+  width: fit-content;
+  max-width: 90%;
+  background: #eef0e7;
+  border-radius: 12px;
+  padding: 12px 17px;
+}
+.user-message .author {
+  color: #737d68;
+}
+.tool-result {
+  padding: 10px 14px;
+  margin: 0 0 24px;
+  border: 1px solid #e2e7da;
+  border-radius: 8px;
+  color: #58664b;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.tool-result summary {
+  cursor: pointer;
+}
+.tool-result p {
+  white-space: pre-wrap;
+  margin: 10px 0 0;
+}
+.working {
+  color: #828b77;
+  font-size: 13px;
+}
