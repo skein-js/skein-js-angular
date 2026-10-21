@@ -7,7 +7,7 @@
     "dev": "nx run-many -t dev --projects=skein-js-angular,apps-agent --parallel=2",
     "start": "pnpm dev",
     "build": "nx run-many -t build --projects=skein-js-angular,apps-agent",
-    "test": "nx test apps-agent",
+    "test": "vitest run --root apps/web && nx test apps-agent",
     "typecheck": "tsc --noEmit -p apps/web/tsconfig.app.json && nx typecheck apps-agent",
     "lint": "nx run-many -t lint --projects=skein-js-angular,apps-agent"
   },

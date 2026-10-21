@@ -19,7 +19,7 @@ export default createConfig(
         },
       ],
       styles: ['./src/styles.scss'],
-      devServer: {},
+      devServer: { port: 4200, proxyConfig: './proxy.conf.json' },
     },
   },
   {

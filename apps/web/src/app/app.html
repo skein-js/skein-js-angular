@@ -1,1 +1,67 @@
-<app-nx-welcome></app-nx-welcome>
+<div class="chat-app">
+  <aside>
+    <a class="brand" href="/" aria-label="Skein chat home"
+      ><span aria-hidden="true">✳</span> skein<span class="brand-note"
+        >/ chat</span
+      ></a
+    >
+    <button class="new-chat" (click)="chat.newChat()" [disabled]="chat.busy()">
+      ＋ New chat
+    </button>
+    <nav aria-label="Conversations">
+      <p class="nav-label">CONVERSATIONS</p>
+      @for (conversation of chat.conversations(); track conversation.id) {
+        <button
+          class="conversation"
+          [class.active]="conversation.id === chat.activeId()"
+          [attr.aria-current]="
+            conversation.id === chat.activeId() ? 'true' : null
+          "
+          [disabled]="chat.busy()"
+          (click)="chat.selectConversation(conversation.id)"
+        >
+          {{ conversation.title }}
+        </button>
+      } @empty {
+        <p class="empty-sidebar">Your chats will appear here.</p>
+      }
+    </nav>
+    <p class="sidebar-note">Built with Angular + Skein.js</p>
+  </aside>
+
+  <main>
+    <header>
+      <span>Chat</span><span class="session-label">Session memory</span>
+    </header>
+    <div class="chat-content">
+      @if (!chat.messages().length && !chat.busy()) {
+        <section class="welcome">
+          <span class="welcome-mark" aria-hidden="true">✳</span>
+          <h1>A little curiosity goes a long way.</h1>
+          <p>Ask a question, follow a thought, or try a tool.</p>
+          <button
+            class="suggestion"
+            (click)="chat.send('What time is it in Tokyo?')"
+          >
+            What time is it in Tokyo? <span aria-hidden="true">↗</span>
+          </button>
+        </section>
+      }
+      <app-message-list [messages]="chat.messages()" [busy]="chat.busy()" />
+    </div>
+    <div class="compose-area">
+      @if (chat.error()) {
+        <div class="error" role="alert">
+          <p>{{ chat.error() }}</p>
+          <button (click)="chat.retry()" [disabled]="chat.busy()">Retry</button>
+        </div>
+      }
+      <app-composer
+        [busy]="chat.busy()"
+        (sent)="chat.send($event)"
+        (stopped)="chat.stop()"
+      />
+      <p class="footnote">AI can make mistakes. Check important details.</p>
+    </div>
+  </main>
+</div>
