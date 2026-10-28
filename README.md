@@ -67,7 +67,7 @@ The core Angular integration is:
 readonly stream = injectStream({
   apiUrl: inject(DOCUMENT).location.origin + '/agent',
   assistantId: 'chat',
-  fetchStateHistory: false,
+  threadId: selectedThreadId, // Angular signal<string | null>
 });
 ```
 
@@ -75,7 +75,8 @@ For each message, Angular sends **only the new turn**. Skein loads the thread's
 checkpointed history. `injectStream` assembles streamed messages and exposes
 Angular signals; the UI renders `stream.messages()`, including tool results.
 
-Stop aborts the stream, with `onDisconnect: 'cancel'` asking Skein to cancel the run.
+Stop aborts pending thread creation or retry state requests, then calls the SDK's
+`stop()` to request server cancellation and disconnect the stream.
 Retry checks whether the original message was checkpointed. Saved turns resume
 with null input; unsaved turns are resubmitted with the same message ID. The UI
 also reuses the optimistic message instead of appending another copy.
@@ -85,10 +86,19 @@ retries the conversation list.
 Angular's dev server proxies `/agent` to the CLI on port 2024. The browser uses the
 same origin without a custom backend server. Messages are rendered as plain text.
 
-`@langchain/angular` is pinned to **0.4.8**, which uses the Agent Protocol run
-endpoints supported by Skein 0.21. Its newer 1.x releases use a different transport.
-The package declares Angular 18–21 peer support; this workspace uses Angular 22,
-so builds and browser behavior are checked locally.
+The demo uses **Skein 0.23.0**, **`@langchain/angular` 1.2.8**, and
+**`@langchain/langgraph-sdk` 1.12.8**. Angular's binding uses the current thread
+subscription/command transport. Conversation selection is an Angular signal;
+optimistic message reconciliation is handled by the SDK. Threads are explicitly
+created with application metadata so they remain discoverable after refresh;
+submissions explicitly target the selected thread to avoid a New chat timing race.
+A failed history load
+clears and reselects the thread across a render so it can load again. Conversation
+titles stay anchored to the first question when later turns update metadata.
+
+The binding still declares Angular 18–21 peer support; this workspace uses
+Angular 22. Local build and browser checks cover the exercised behavior, without
+claiming upstream support for all Angular 22 scenarios.
 
 ## In memory means in memory
 
@@ -111,8 +121,10 @@ pnpm test
 pnpm lint
 ```
 
-Retry tests exercise the real SDK controller and LangGraph checkpointing, with
-fake HTTP and model responses. The application always uses a real provider;
+Service unit tests cover recovery decisions with the current Angular API mocked;
+agent tests exercise real LangGraph checkpointing with fake model responses.
+The presentation package includes a real-HTTP SDK approval/background check and
+a clearly labeled deterministic chat fixture for browser compatibility checks. The application always uses a real provider;
 a live model check requires your own credentials.
 
 The agent project was scaffolded with the Skein Nx generator:
@@ -133,3 +145,11 @@ The CLI and generated Nx targets handle the agent lifecycle.
 - **No tool call:** ask explicitly for the current time and choose a model that
   supports tool calling.
 - **Conversations disappeared:** restarting Skein intentionally resets memory.
+
+## Session slides
+
+The Slidev deck lives in [presentations/beyond-the-sdk](presentations/beyond-the-sdk/README.md).
+View the [published slides](https://skein-js.github.io/skein-js-angular/).
+Its own package uses npm and runs on port 3030; the app workspace continues to use pnpm.
+The [presenter runbook](presentations/beyond-the-sdk/DEMO-RUNBOOK.md) covers live prompts,
+keyless approval/background examples, timing, and recovery options.

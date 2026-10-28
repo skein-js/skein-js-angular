@@ -1,9 +1,11 @@
 import {
+  afterNextRender,
   computed,
   DestroyRef,
   DOCUMENT,
   inject,
   Injectable,
+  Injector,
   signal,
 } from '@angular/core';
 import { injectStream } from '@langchain/angular';
@@ -12,6 +14,7 @@ import { ChatState, Conversation } from './chat.model';
 
 @Injectable()
 export class Chat {
+  private readonly injector = inject(Injector);
   private readonly conversationState = signal<Conversation[]>([]);
   private readonly activeIdState = signal<string | null>(null);
   readonly conversations = this.conversationState.asReadonly();
@@ -20,12 +23,13 @@ export class Chat {
   private readonly requestError = signal<unknown>(undefined);
   private retryMessage: HumanMessage | undefined;
   private retryTarget: 'list' | 'history' | 'message' = 'list';
+  private submissionAbort: AbortController | undefined;
 
   // The Angular integration owns token assembly, thread hydration, and stream state.
   private readonly stream = injectStream<ChatState>({
     apiUrl: inject(DOCUMENT).location.origin + '/agent',
     assistantId: 'chat',
-    fetchStateHistory: false,
+    threadId: this.activeIdState,
     onThreadId: (id) => {
       this.activeIdState.set(id);
       if (!this.conversations().some((item) => item.id === id)) {
@@ -35,10 +39,6 @@ export class Chat {
         );
         this.conversationState.update((items) => [{ id, title }, ...items]);
       }
-    },
-    onFinish: () => {
-      this.retryMessage = undefined;
-      this.retryTarget = 'list';
     },
   });
 
@@ -59,7 +59,7 @@ export class Chat {
   });
 
   constructor() {
-    inject(DestroyRef).onDestroy(() => this.stream.stop());
+    inject(DestroyRef).onDestroy(() => this.stop());
   }
 
   async loadConversations() {
@@ -91,9 +91,6 @@ export class Chat {
 
   selectConversation(id: string | null) {
     if (this.busy()) return;
-    // Clear first so selecting the same thread also retries its history request.
-    this.stream.switchThread(null);
-    this.stream.switchThread(id);
     this.activeIdState.set(id);
     this.requestError.set(undefined);
     this.retryMessage = undefined;
@@ -110,26 +107,69 @@ export class Chat {
     if (this.busy()) return;
     if (this.retryTarget === 'message' && this.retryMessage)
       await this.submit(this.retryMessage, true);
-    else if (this.retryTarget === 'history')
-      this.selectConversation(this.activeId());
-    else await this.loadConversations();
+    else if (this.retryTarget === 'history') {
+      // v1 binds thread selection to a signal. Let the clear render before
+      // reselecting the same ID so the binding performs a fresh hydration.
+      const id = this.activeId();
+      this.activeIdState.set(null);
+      this.pending.set(true);
+      await new Promise<void>((resolve) => {
+        afterNextRender(
+          () => {
+            this.activeIdState.set(id);
+            this.pending.set(false);
+            resolve();
+          },
+          { injector: this.injector },
+        );
+      });
+    } else await this.loadConversations();
   }
 
   stop() {
-    this.stream.stop();
+    this.submissionAbort?.abort();
+    void this.stream.stop();
   }
 
   private async submit(message: HumanMessage, retry = false) {
+    const abort = new AbortController();
+    this.submissionAbort = abort;
     this.pending.set(true);
     this.requestError.set(undefined);
     this.retryMessage = message;
     this.retryTarget = 'message';
     try {
-      const id = this.activeId();
+      let id = this.activeId();
+      const title =
+        this.conversations().find((item) => item.id === id)?.title ??
+        String(message.content).slice(0, 48);
+      // The current SDK's command metadata belongs to the run. Create the
+      // thread explicitly so sidebar filtering and titles survive a refresh.
+      if (!id) {
+        const thread = await this.stream.client.threads.create({
+          metadata: { app: 'angular-chat', title },
+          signal: abort.signal,
+        });
+        abort.signal.throwIfAborted();
+        id = thread.thread_id;
+        this.activeIdState.set(id);
+        this.conversationState.update((items) => [
+          { id: thread.thread_id, title },
+          ...items,
+        ]);
+      }
+
       const saved =
         retry && id
-          ? await this.stream.client.threads.getState<ChatState>(id)
+          ? await this.stream.client.threads.getState<ChatState>(
+              id,
+              undefined,
+              {
+                signal: abort.signal,
+              },
+            )
           : undefined;
+      abort.signal.throwIfAborted();
       const checkpointed = saved?.values?.messages?.some(
         (item) => item.id === message.id,
       );
@@ -138,20 +178,19 @@ export class Chat {
       await this.stream.submit(checkpointed ? null : { messages: [message] }, {
         metadata: {
           app: 'angular-chat',
-          title: String(message.content).slice(0, 48),
+          title,
         },
-        onDisconnect: 'cancel',
-        optimisticValues: checkpointed
-          ? undefined
-          : (state) => ({
-              messages: state.messages?.some((item) => item.id === message.id)
-                ? state.messages
-                : [...(state.messages ?? []), message],
-            }),
+        threadId: id,
+        multitaskStrategy: 'reject',
       });
+      if (!this.stream.error()) {
+        this.retryMessage = undefined;
+        this.retryTarget = 'list';
+      }
     } catch (error) {
-      this.requestError.set(error);
+      if (!abort.signal.aborted) this.requestError.set(error);
     } finally {
+      if (this.submissionAbort === abort) this.submissionAbort = undefined;
       this.pending.set(false);
     }
   }

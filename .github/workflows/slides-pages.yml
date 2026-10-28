@@ -1,0 +1,62 @@
+name: Publish session slides
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'presentations/beyond-the-sdk/**'
+      - '.github/workflows/slides-pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: presentations/beyond-the-sdk
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: presentations/beyond-the-sdk/package-lock.json
+      - name: Read Pages configuration
+        id: pages
+        uses: actions/configure-pages@v5
+      - name: Install presentation dependencies
+        run: npm ci
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+      - name: Build slides for the Pages subpath
+        run: |
+          npm run build -- --base "${PAGES_BASE_PATH}/"
+          cp dist/index.html dist/404.html
+          touch dist/.nojekyll
+        env:
+          PAGES_BASE_PATH: ${{ steps.pages.outputs.base_path }}
+      - name: Upload site
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: presentations/beyond-the-sdk/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy slides
+        id: deployment
+        uses: actions/deploy-pages@v4

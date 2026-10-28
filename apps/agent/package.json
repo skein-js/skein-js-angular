@@ -25,7 +25,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
-    "skein-js": "^0.21.0",
+    "skein-js": "^0.23.0",
     "typescript": "^5.7.2",
     "vitest": "^4.1.9"
   }

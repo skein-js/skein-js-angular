@@ -1,114 +1,47 @@
 import '@angular/compiler';
-import { computed, DOCUMENT, Injector, signal } from '@angular/core';
-import { injectStream, UseStreamOptions } from '@langchain/angular';
-import { Client, ThreadState } from '@langchain/langgraph-sdk';
-import {
-  ensureMessageInstances,
-  StreamOrchestrator,
-} from '@langchain/langgraph-sdk/ui';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { DOCUMENT, Injector, signal } from '@angular/core';
+import { injectStream, StreamApi, UseStreamOptions } from '@langchain/angular';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Chat } from './chat';
-import { ChatMessage, ChatState, messageText } from './chat.model';
+import { ChatState, messageText } from './chat.model';
 
 vi.mock('@langchain/angular', () => ({ injectStream: vi.fn() }));
+vi.mock('@angular/core', async (original) => ({
+  ...(await original<typeof import('@angular/core')>()),
+  // Unit tests drive the render boundary; the real binding is checked in browser.
+  afterNextRender: (callback: () => void) => queueMicrotask(callback),
+}));
 
-type RunOptions = NonNullable<Parameters<Client['runs']['stream']>[2]>;
 const cleanups: (() => void)[] = [];
-
-function threadState(messages: ChatMessage[] = []): ThreadState<ChatState> {
-  return {
-    values: { messages },
-    next: [],
-    tasks: [],
-    metadata: {},
-    checkpoint: {
-      thread_id: 'thread-1',
-      checkpoint_ns: '',
-      checkpoint_id: 'checkpoint-1',
-      checkpoint_map: {},
-    },
-    parent_checkpoint: null,
-    created_at: '2026-10-22T09:00:00Z',
-  };
-}
-
-function wire(message: ChatMessage): ChatMessage {
-  return { id: message.id, type: message.type, content: message.content };
-}
-
 function setup() {
-  let savedMessages: ChatMessage[] = [];
+  const error = signal<unknown>(undefined);
+  const loading = signal(false);
+  const messages = signal<ChatState['messages']>([]);
+  let nextThread = 0;
   const client = {
     threads: {
-      create: vi.fn().mockResolvedValue({ thread_id: 'thread-1' }),
+      create: vi.fn(async () => ({ thread_id: `thread-${++nextThread}` })),
       search: vi.fn().mockResolvedValue([]),
-      getState: vi.fn(async () => threadState(savedMessages)),
-    },
-    runs: {
-      stream: vi.fn(async function* (
-        threadId: string,
-        _assistant: string,
-        options: RunOptions,
-      ): ReturnType<Client['runs']['stream']> {
-        options.onRunCreated?.({ thread_id: threadId, run_id: 'run-1' });
-        const input = options.input as ChatState | null;
-        const messages = input?.messages ?? savedMessages;
-        if (!messages.length) {
-          yield {
-            event: 'error',
-            data: { error: 'EmptyInputError', message: 'EmptyInputError' },
-          };
-          return;
-        }
-        yield {
-          event: 'values',
-          data: {
-            messages: [
-              ...messages.map(wire),
-              { id: 'reply-1', type: 'ai', content: 'Hello there' },
-            ],
-          },
-        };
-      }),
+      getState: vi.fn().mockResolvedValue({ values: { messages: [] } }),
     },
   };
-
-  // Use the real SDK controller; only its HTTP calls and Angular effect bridge are faked.
-  let controller!: StreamOrchestrator<ChatState>;
-  const stop = vi.fn(() => controller.stop());
-  vi.mocked(injectStream).mockImplementation((options) => {
-    controller = new StreamOrchestrator<ChatState>(
-      options as unknown as UseStreamOptions<ChatState>,
-      {
-        getClient: () => client as unknown as Client,
-        getAssistantId: () => 'chat',
-        getMessagesKey: () => 'messages',
-      },
-    );
-    const version = signal(0);
-    const unsubscribe = controller.subscribe(() =>
-      version.update((value) => value + 1),
-    );
-    cleanups.push(() => {
-      unsubscribe();
-      controller.dispose();
-    });
-    controller.initThreadId(undefined);
-    const read = <T>(get: () => T) =>
-      computed(() => {
-        version();
-        return get();
-      });
+  let options!: UseStreamOptions<ChatState>;
+  const submit = vi.fn<StreamApi<ChatState>['submit']>(async () => {
+    options.onThreadId?.('thread-1');
+    error.set(undefined);
+  });
+  const stop = vi.fn().mockResolvedValue(undefined);
+  vi.mocked(injectStream).mockImplementation((value) => {
+    options = value as UseStreamOptions<ChatState>;
     return {
       client,
-      messages: read(() => ensureMessageInstances(controller.messages)),
-      error: read(() => controller.error),
-      isLoading: read(() => controller.isLoading),
-      isThreadLoading: read(() => controller.isThreadLoading),
-      submit: controller.submit.bind(controller),
-      switchThread: controller.switchThread.bind(controller),
+      messages,
+      error,
+      isLoading: loading,
+      isThreadLoading: signal(false),
+      submit,
       stop,
-    } as unknown as ReturnType<typeof injectStream>;
+    } as unknown as StreamApi;
   });
   const injector = Injector.create({
     providers: [
@@ -121,220 +54,214 @@ function setup() {
   });
   const chat = injector.get(Chat);
   cleanups.push(() => injector.destroy());
-  return {
-    chat,
-    client,
-    stop,
-    save: (messages: ChatMessage[]) => {
-      savedMessages = messages;
-    },
-  };
+  return { chat, client, submit, stop, error, loading, options: () => options };
 }
 
-beforeEach(() =>
-  vi.spyOn(console, 'error').mockImplementation(() => undefined),
-);
 afterEach(() => {
-  for (const cleanup of cleanups.splice(0).reverse()) cleanup();
+  cleanups
+    .splice(0)
+    .reverse()
+    .forEach((cleanup) => cleanup());
   vi.clearAllMocks();
-  vi.restoreAllMocks();
 });
 
-describe('chat integration', () => {
-  it('sends one new turn and guards against concurrent sends', async () => {
-    const { chat, client } = setup();
+describe('chat service with Angular SDK 1.x', () => {
+  it('binds conversation selection through the public threadId signal', () => {
+    const { chat, options } = setup();
+    const threadId = options().threadId as () => string | null;
+    chat.selectConversation('earlier');
+    expect(threadId()).toBe('earlier');
+    chat.newChat();
+    expect(threadId()).toBeNull();
+  });
+
+  it('sends only a new turn and prevents concurrent submissions', async () => {
+    const { chat, submit } = setup();
     let finish!: () => void;
-    const waiting = new Promise<void>((resolve) => {
-      finish = resolve;
-    });
-    client.runs.stream.mockImplementationOnce(async function* () {
-      await waiting;
-      yield { event: 'values', data: { messages: [] } };
-    });
+    submit.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
     const sending = chat.send('  Hello  ');
-    expect(chat.busy()).toBe(true);
-    await chat.send('Another question');
-    await vi.waitFor(() => expect(client.runs.stream).toHaveBeenCalledOnce());
-    const [threadId, assistant, options] = client.runs.stream.mock.calls[0];
-    expect([threadId, assistant]).toEqual(['thread-1', 'chat']);
-    expect((options.input as ChatState).messages[0].content).toBe('Hello');
-    expect(options.onDisconnect).toBe('cancel');
+    await chat.send('Second question');
+    expect(submit).toHaveBeenCalledOnce();
+    const [input, options] = vi.mocked(submit).mock.calls[0] as unknown as [
+      ChatState,
+      { multitaskStrategy: string },
+    ];
+    expect(input.messages.map((message) => message.content)).toEqual(['Hello']);
+    expect(options.multitaskStrategy).toBe('reject');
     finish();
     await sending;
     expect(chat.busy()).toBe(false);
   });
 
-  it('loads a conversation and clears its messages for a new chat', async () => {
-    const { chat, client } = setup();
-    client.threads.search.mockResolvedValueOnce([
-      { thread_id: 'old-thread', metadata: { title: 'Earlier chat' } },
-    ]);
-    client.threads.getState.mockResolvedValueOnce(
-      threadState([
-        { id: 'old-question', type: 'human', content: 'Earlier question' },
-      ]),
-    );
-    await chat.loadConversations();
-    chat.selectConversation('old-thread');
-    await vi.waitFor(() => expect(chat.messages()).toHaveLength(1));
-    expect(chat.activeId()).toBe('old-thread');
-    expect(chat.conversations()).toEqual([
-      { id: 'old-thread', title: 'Earlier chat' },
-    ]);
-    chat.newChat();
-    expect(chat.activeId()).toBeNull();
-    expect(chat.messages()).toEqual([]);
-  });
-
-  it('resumes a checkpointed failed turn without submitting the question again', async () => {
-    const { chat, client, save } = setup();
-    client.runs.stream.mockImplementationOnce(
-      async function* (
-        threadId,
-        _assistant,
-        options,
-      ): ReturnType<Client['runs']['stream']> {
-        options.onRunCreated?.({ thread_id: threadId, run_id: 'failed-run' });
-        save((options.input as ChatState).messages.map(wire));
-        yield {
-          event: 'values',
-          data: { messages: (options.input as ChatState).messages.map(wire) },
-        };
-        yield {
-          event: 'error',
-          data: { error: 'Error', message: 'Provider unavailable' },
-        };
-      },
-    );
+  it('continues a checkpointed failed turn with null input', async () => {
+    const { chat, submit, error, client, options } = setup();
+    submit.mockImplementationOnce(async () => {
+      options().onThreadId?.('thread-1');
+      error.set(new Error('Provider unavailable'));
+    });
     await chat.send('Hello');
-    expect(chat.error()).toBe('Provider unavailable');
+    const original = submit.mock.calls[0] as unknown as [
+      { messages: ChatState['messages'] },
+    ];
+    client.threads.getState.mockResolvedValueOnce({
+      values: { messages: original[0].messages },
+    });
     await chat.retry();
-    expect(client.runs.stream.mock.lastCall?.[2].input).toBeNull();
-    expect(
-      chat.messages().filter((message) => message.type === 'human'),
-    ).toHaveLength(1);
-    expect(chat.error()).toBe('');
+    expect(submit.mock.lastCall?.[0]).toBeNull();
   });
 
-  it('keeps the question when an accepted run fails before creating a checkpoint', async () => {
-    const { chat, client } = setup();
-    client.runs.stream.mockImplementationOnce(
-      async function* (
-        threadId,
-        _assistant,
-        options,
-      ): ReturnType<Client['runs']['stream']> {
-        options.onRunCreated?.({ thread_id: threadId, run_id: 'failed-run' });
-        yield {
-          event: 'error',
-          data: {
-            error: 'SkeinConfigError',
-            message:
-              'Failed to import graph module: missing model configuration',
-          },
-        };
-      },
-    );
+  it('reuses the original message ID when a failed turn was not checkpointed', async () => {
+    const { chat, submit, error, options } = setup();
+    submit.mockImplementationOnce(async () => {
+      options().onThreadId?.('thread-1');
+      error.set(new Error('Offline'));
+    });
     await chat.send('Hello');
-    const original = client.runs.stream.mock.lastCall?.[2].input;
-    expect(chat.error()).toContain('Check its model configuration');
+    const original = submit.mock.calls[0]?.[0];
     await chat.retry();
-    expect(client.runs.stream.mock.lastCall?.[2].input).toEqual(original);
-    expect(chat.messages().map((message) => message.content)).toEqual([
-      'Hello',
-      'Hello there',
-    ]);
-    expect(chat.error()).toBe('');
+    expect(submit.mock.lastCall?.[0]).toEqual(original);
   });
 
-  it('does not duplicate the optimistic question across rejected retries', async () => {
-    const { chat, client } = setup();
-    const offline = () =>
-      ({
-        async *[Symbol.asyncIterator]() {
-          yield await Promise.reject(new Error('Offline'));
-        },
-      }) as ReturnType<Client['runs']['stream']>;
-    client.runs.stream
-      .mockImplementationOnce(offline)
-      .mockImplementationOnce(offline);
+  it('keeps the pending turn when its retry state check fails', async () => {
+    const { chat, submit, error, client, options } = setup();
+    submit.mockImplementationOnce(async () => {
+      options().onThreadId?.('thread-1');
+      error.set(new Error('Offline'));
+    });
     await chat.send('Hello');
-    expect(chat.error()).toBe('Offline');
-    expect(chat.messages()).toHaveLength(1);
-    const original = client.runs.stream.mock.lastCall?.[2].input;
-    await chat.retry();
-    expect(chat.messages()).toHaveLength(1);
-    expect(client.runs.stream.mock.lastCall?.[2].input).toEqual(original);
-    await chat.retry();
-    expect(
-      chat.messages().filter((message) => message.type === 'human'),
-    ).toHaveLength(1);
-    expect(chat.error()).toBe('');
-  });
-
-  it('retries the selected conversation history after a transient failure', async () => {
-    const { chat, client } = setup();
-    client.threads.getState
-      .mockRejectedValueOnce(new Error('History offline'))
-      .mockResolvedValueOnce(
-        threadState([
-          { id: 'old', type: 'human', content: 'Earlier question' },
-        ]),
-      );
-    chat.selectConversation('old-thread');
-    await vi.waitFor(() => expect(chat.error()).toBe('History offline'));
-    await chat.retry();
-    await vi.waitFor(() =>
-      expect(chat.messages().map((message) => message.content)).toEqual([
-        'Earlier question',
-      ]),
-    );
-    expect(client.threads.getState).toHaveBeenCalledTimes(2);
-    expect(client.threads.getState).toHaveBeenLastCalledWith('old-thread');
-    expect(client.threads.search).not.toHaveBeenCalled();
-    expect(chat.activeId()).toBe('old-thread');
-    expect(chat.error()).toBe('');
-  });
-
-  it('keeps the pending question if the retry state check fails', async () => {
-    const { chat, client } = setup();
-    client.runs.stream.mockImplementationOnce(
-      () =>
-        ({
-          async *[Symbol.asyncIterator]() {
-            yield await Promise.reject(new Error('Offline'));
-          },
-        }) as ReturnType<Client['runs']['stream']>,
-    );
-    await chat.send('Hello');
-    const original = client.runs.stream.mock.lastCall?.[2].input;
     client.threads.getState.mockRejectedValueOnce(new Error('State offline'));
     await chat.retry();
     expect(chat.error()).toBe('State offline');
-    expect(client.runs.stream).toHaveBeenCalledOnce();
+    expect(submit).toHaveBeenCalledOnce();
     await chat.retry();
-    expect(client.runs.stream.mock.lastCall?.[2].input).toEqual(original);
-    expect(
-      chat.messages().filter((message) => message.type === 'human'),
-    ).toHaveLength(1);
-    expect(chat.error()).toBe('');
+    expect(submit).toHaveBeenCalledTimes(2);
   });
 
-  it('retries sidebar loading without resubmitting a successful turn', async () => {
-    const { chat, client, stop } = setup();
+  it('retries history by clearing selection across a render, without submitting a run', async () => {
+    const { chat, submit, options } = setup();
+    chat.selectConversation('earlier');
+    const retrying = chat.retry();
+    const threadId = options().threadId as () => string | null;
+    expect(threadId()).toBeNull();
+    expect(chat.busy()).toBe(true);
+    await retrying;
+    expect(threadId()).toBe('earlier');
+    expect(submit).not.toHaveBeenCalled();
+  });
+
+  it('retries the conversation list without resubmitting a completed turn', async () => {
+    const { chat, client, submit } = setup();
     await chat.send('Hello');
-    client.threads.search.mockRejectedValueOnce(new Error('Offline'));
+    client.threads.search.mockRejectedValueOnce(new Error('Sidebar offline'));
     await chat.loadConversations();
-    expect(chat.error()).toBe('Offline');
+    expect(chat.error()).toBe('Sidebar offline');
     await chat.retry();
     expect(client.threads.search).toHaveBeenCalledTimes(2);
-    expect(client.runs.stream).toHaveBeenCalledOnce();
+    expect(submit).toHaveBeenCalledOnce();
     expect(chat.error()).toBe('');
-    chat.stop();
-    expect(stop).toHaveBeenCalledOnce();
   });
 
-  it('renders text blocks without exposing non-text provider content', () => {
+  it('starts a fresh SDK thread when New chat and send happen before the signal effect', async () => {
+    const { chat, submit } = setup();
+    await chat.send('Old conversation');
+    chat.newChat();
+    await chat.send('New conversation');
+    expect(submit.mock.lastCall?.[1]).toMatchObject({ threadId: 'thread-2' });
+  });
+
+  it('stores the application marker and title on the thread, not just the run', async () => {
+    const { chat, client } = setup();
+    await chat.send('Tokyo trip');
+    expect(client.threads.create).toHaveBeenCalledWith({
+      metadata: { app: 'angular-chat', title: 'Tokyo trip' },
+      signal: expect.any(AbortSignal),
+    });
+  });
+
+  it('does not submit after Stop while thread creation is pending', async () => {
+    const { chat, client, submit } = setup();
+    let finish!: (thread: { thread_id: string }) => void;
+    client.threads.create.mockImplementationOnce(
+      () => new Promise((resolve) => (finish = resolve)),
+    );
+    const sending = chat.send('Do not start this');
+    const [request] = client.threads.create.mock.calls[0] as unknown as [
+      { signal: AbortSignal },
+    ];
+    chat.stop();
+    expect(request.signal.aborted).toBe(true);
+    finish({ thread_id: 'cancelled-thread' });
+    await sending;
+    expect(submit).not.toHaveBeenCalled();
+    expect(chat.activeId()).toBeNull();
+    expect(chat.error()).toBe('');
+    expect(chat.busy()).toBe(false);
+    await chat.send('Start a different request');
+    expect(submit).toHaveBeenCalledOnce();
+  });
+
+  it('does not resume a failed turn after Stop during its state check', async () => {
+    const { chat, client, submit, error } = setup();
+    submit.mockImplementationOnce(async () => error.set(new Error('Offline')));
+    await chat.send('Hello');
+    let finish!: (state: { values: { messages: never[] } }) => void;
+    client.threads.getState.mockImplementationOnce(
+      () => new Promise((resolve) => (finish = resolve)),
+    );
+    const retrying = chat.retry();
+    chat.stop();
+    finish({ values: { messages: [] } });
+    await retrying;
+    expect(submit).toHaveBeenCalledOnce();
+    expect(chat.busy()).toBe(false);
+  });
+
+  it('treats an aborted create request as cancellation rather than an error', async () => {
+    const { chat, client, submit } = setup();
+    let fail!: (error: Error) => void;
+    client.threads.create.mockImplementationOnce(
+      () => new Promise((_resolve, reject) => (fail = reject)),
+    );
+    const sending = chat.send('Cancel this request');
+    chat.stop();
+    fail(new DOMException('Aborted', 'AbortError'));
+    await sending;
+    expect(chat.error()).toBe('');
+    expect(submit).not.toHaveBeenCalled();
+    expect(chat.busy()).toBe(false);
+  });
+
+  it('keeps the first question as the conversation title on later turns', async () => {
+    const { chat, submit } = setup();
+    await chat.send('Tokyo trip');
+    await chat.send('And Nairobi?');
+    expect(submit.mock.lastCall?.[1]).toMatchObject({
+      metadata: { title: 'Tokyo trip' },
+    });
+  });
+
+  it('uses explicit SDK cancellation and stops on service destruction', () => {
+    const { chat, stop } = setup();
+    chat.stop();
+    expect(stop).toHaveBeenCalledWith();
+    cleanups.pop()?.();
+    expect(stop).toHaveBeenCalledTimes(2);
+  });
+
+  it('maps a graph configuration failure to an actionable error', () => {
+    const { chat, error } = setup();
+    error.set(
+      new Error('Failed to import graph module: missing model configuration'),
+    );
+    expect(chat.error()).toContain('Check its model configuration');
+  });
+
+  it('renders text blocks without exposing other provider content', () => {
     expect(
       messageText({
         type: 'ai',
@@ -345,11 +272,5 @@ describe('chat integration', () => {
         ],
       }),
     ).toBe('Hello there');
-  });
-
-  it('stops streaming when the chat provider is destroyed', () => {
-    const { stop } = setup();
-    cleanups.pop()?.();
-    expect(stop).toHaveBeenCalledOnce();
   });
 });

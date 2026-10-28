@@ -1,0 +1,8 @@
+{
+  "node_version": "24",
+  "graphs": {
+    "approval": "./approval-graph.ts:graph",
+    "job": "./approval-graph.ts:job",
+    "chat": "./chat-fixture.ts:chat"
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "name": "skein-beyond-the-sdk-slides",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "slidev --port 3030",
+    "build": "slidev build",
+    "export": "slidev export --output beyond-the-sdk.pdf",
+    "demo:approval": "cd demo && skein dev --port 2025 --no-persist",
+    "demo:sdk": "node --env-file=../../apps/agent/.env demo/sdk-call.mjs",
+    "demo:verify": "node demo/verify.mjs"
+  },
+  "devDependencies": {
+    "@slidev/cli": "53.0.0",
+    "@slidev/theme-default": "^0.25.0",
+    "playwright-chromium": "^1.56.1"
+  },
+  "dependencies": {
+    "@langchain/langgraph": "1.4.12",
+    "@langchain/langgraph-sdk": "1.12.8",
+    "skein-js": "0.23.0",
+    "@langchain/core": "1.2.13"
+  }
+}
